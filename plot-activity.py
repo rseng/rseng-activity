@@ -126,32 +126,29 @@ def plot_results(df, outdir):
     """
     Make plots for each result item.
     """
-    plt.figure(figsize=(28, 28))
+    plt.figure(figsize=(18, 10))
     ax = sns.scatterplot(data=df, x="added_database_week", y="last_commit_date")
     outfile = os.path.join(outdir, "last-commit-function-of-added.png")
     make_plot(
         ax,
-        slug="last-commit-vs-addition-to-database-date",
+        title="Last Commit vs. Database Addition",
         outfile=outfile,
         ylabel="Last commit date (proxy for activity)",
-        xlabel="Date added to Database (proxy for publication)",
+        xlabel="Date added to database (proxy for publication)",
     )
 
 
-def make_plot(ax, slug, outfile, xlabel=None, ylabel=None):
+def make_plot(ax, title, outfile, xlabel=None, ylabel=None):
     """
     Generic plot making function for some x and y
     """
-    # for sty in plt.style.available:
-    title = slug.replace("-", " ")
-    sns.set(rc={"figure.figsize": (28, 28)})
-    plt.title(title)
+    plt.title(title, fontsize=28)
 
     # For bandwith, higher is better
     if xlabel:
-        ax.set_xlabel(xlabel, fontsize=16)
+        ax.set_xlabel(xlabel, fontsize=20)
     if ylabel:
-        ax.set_ylabel(ylabel, fontsize=16)
+        ax.set_ylabel(ylabel, fontsize=20)
     # ax.set_xticklabels(ax.get_xmajorticklabels(), fontsize=14)
     # ax.set_yticklabels(ax.get_yticks(), fontsize=14)
     plt.tight_layout()
