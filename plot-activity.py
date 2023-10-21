@@ -126,6 +126,7 @@ def plot_results(df, outdir):
     """
     Make plots for each result item.
     """
+    plt.figure(figsize=(28, 28))
     ax = sns.scatterplot(data=df, x="added_database_week", y="last_commit_date")
     outfile = os.path.join(outdir, "last-commit-function-of-added.png")
     make_plot(
