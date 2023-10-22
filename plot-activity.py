@@ -3,7 +3,10 @@ import pandas
 from rse.utils.file import read_json, write_json
 import matplotlib.pyplot as plt
 import seaborn as sns
+from datetime import datetime
 import os
+
+today = datetime.now()
 
 plt.style.use("bmh")
 here = os.path.dirname(os.path.abspath(__file__))
@@ -52,7 +55,7 @@ def main():
     df.to_csv(os.path.join(results_dir, "results.csv"))
 
     # And plot!
-    plot_results(df, outdir)
+    # plot_results(df, outdir)
 
     # Derive high valued repositories, and also save
     derive_high_valued(df, outdir, results_dir)
@@ -61,28 +64,56 @@ def main():
 def derive_high_valued(df, outdir, results_dir):
     """
     Derive highly valued software, as indicated by updates over time.
-    """
-    # Save high value repos after 24 months
+    """    
+    # Save high value repos after 24 months and based on add date
     high_valued = {}
-
+    high_valued_relative = {}
+    high_valued_global = set()
+    
     # And how many are updated at each period
     updated_at_period = []
+    updated_percents = []
 
     # Figure out "highly valued" projects, or those with commits at least six months and one year after publication
+    # We will make two plots: one that is a count of projects still updated (not accounting for creation date)
+    # A second that takes into account if the project existed for that long
     months = range(0, 41)
     for month in months:
+    
+        # Go through each repository in case we need to go up to today
         df[f"{month}_months_post_add"] = df.published_date + pandas.DateOffset(
             months=month
         )
+        df[f"{month}_months_is_not_future"] = df[f"{month}_months_post_add"] < today
+                
+        # filter down to those not in the future
+        not_future = pandas.DataFrame(df[df[f"{month}_months_is_not_future"] == True])
+
+        # Count both those (globally) that survive vs the percentage of those that
         df[f"{month}_months_high_value"] = (
             df.last_commit_date > df[f"{month}_months_post_add"]
         )
+
+        # These don't include those 
         updated_repos = df[df[f"{month}_months_high_value"] == True].repo.tolist()
         update_count = len(updated_repos)
+
         updated_at_period.append(update_count)
-        print(f"There are {update_count} repos at {month} months")
+        percent_updated = len(updated_repos)/not_future.shape[0]
+
+        # As a percentage of contenders (existing that long ago)
+        updated_percents.append(percent_updated)
+        print(f"There are {update_count} repos ({percent_updated}%) at {month} months")
         if month >= 24:
             high_valued[month] = updated_repos
+        
+            # This is the last month it will be valid
+            high_valued_relative[month] = []
+            for repo in not_future.repo:
+                next_month = df[df.repo == repo].published_date + pandas.DateOffset(months=month+1)
+                if (next_month > today).all():
+                    high_valued_relative[month].append(repo)
+                    high_valued_global.add(repo)
 
     plt.figure(figsize=(10, 8))
     plt.plot(list(months), updated_at_period)
@@ -94,7 +125,19 @@ def derive_high_valued(df, outdir, results_dir):
     plt.clf()
     plt.close()
     write_json(high_valued, os.path.join(results_dir, "highest-value.json"))
+    write_json(high_valued_relative, os.path.join(results_dir, "highest-value-relative.json"))
 
+    plt.figure(figsize=(10, 8))
+    plt.plot(list(months), updated_percents)
+    plt.title("Percentage of existing repositories for each time frame being updated")
+    plt.xlabel("Months post addition", fontsize=16)
+    plt.ylabel("Number of updated repositories", fontsize=16)
+    plt.tight_layout()
+    plt.savefig(os.path.join(outdir, "updated-repos-over-time-percent.png"))
+    plt.clf()
+    plt.close()
+    write_json(sorted(list(high_valued_global)), os.path.join(results_dir, "highest-value-global-after-24-months.json"))
+    
 
 def prepare_data_frame(data):
     """
