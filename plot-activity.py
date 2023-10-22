@@ -52,7 +52,7 @@ def main():
     df.to_csv(os.path.join(results_dir, "results.csv"))
 
     # And plot!
-    # plot_results(df, outdir)
+    plot_results(df, outdir)
 
     # Derive high valued repositories, and also save
     derive_high_valued(df, outdir, results_dir)
@@ -145,6 +145,18 @@ def plot_results(df, outdir):
     """
     Make plots for each result item.
     """
+    # Use zenodo and rsepedia (squashed)
+    plt.figure(figsize=(18, 10))
+    ax = sns.scatterplot(data=df, x="published_date", y="last_commit_date")
+    outfile = os.path.join(outdir, "last-commit-function-of-added.png")
+    make_plot(
+        ax,
+        title="Last Commit vs. Likely Publication",
+        outfile=outfile,
+        ylabel="Last commit date (proxy for activity)",
+        xlabel="Date likely published (Zenodo or added to database)",
+    )
+
     # This includes our best effort for the published data (zenodo and rsepedia added)
     plt.figure(figsize=(18, 10))
     ax = sns.scatterplot(data=df, x="added_database_week", y="last_commit_date")
