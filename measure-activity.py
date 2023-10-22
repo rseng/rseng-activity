@@ -13,6 +13,7 @@ from rse.utils.file import write_json, read_json
 
 from datetime import datetime
 import tempfile
+import requests
 import shutil
 import subprocess
 import shlex
@@ -59,6 +60,69 @@ def last_commit(repo, dest):
     return timestr
 
 
+def look_for_doi(repo):
+    """
+    A lot of records have a DOI, and the publication date is a more
+    accurate assessment than when it was added to the rsepedia.
+    """
+    url = "https://zenodo.org/api/records"
+    doi = repo.data.get("doi") or repo.data.get("data", {}).get("doi")
+    if not doi:
+        return doi, None
+    if isinstance(doi, list):
+        doi = doi[0]
+
+    # Rate limit is 5000/hour, we should be ok
+    if "zenodo" not in doi:
+        return doi, None
+
+    record_id = os.path.basename(doi).split(".")[-1]
+    zenodo_url = f"{url}/{record_id}"
+    r = requests.get(zenodo_url)
+    record = r.json()
+
+    # We can't get an API response
+    if "metadata" not in record:
+        return doi, None
+
+    published = record["metadata"]["publication_date"]
+    print(f"Found actual publication date {published} for {doi}")
+    return doi, published
+
+
+def derive_creation_timestamps(pedia, outdir, added_json, settings_file):
+    """
+    Parse the commit for when the file was added for each
+    This is our best estimate for a publication / release date
+    in the particular place it was parsed (give or take a week)
+    """
+    print("🤓️ Looking for when each software repository was added to the database...")
+    print("If a zenodo DOI is provided, we can use that instead.")
+
+    repos = list(pedia.list())
+    total = len(repos)
+
+    # repository directory
+    repo_dir = os.path.dirname(settings_file)
+
+    added = {}
+    if os.path.exists(added_json):
+        added = read_json(added_json)
+
+    for i, reponame in enumerate(repos):
+        print(f"{i} of {total}", end="\r")
+        repo = pedia.get(reponame[0])
+        if repo.url in added:
+            continue
+        doi, published = look_for_doi(repo)
+
+        # Get relative path of the filename to the repository
+        filename = os.path.relpath(repo.filename, repo_dir)
+        created_at = creation_date(repo, repo_dir, filename)
+        added[repo.url] = {"created_at": created_at, "doi": doi, "published": published}
+    return added
+
+
 def get_parser():
     parser = argparse.ArgumentParser(
         description="Research Software Encyclopedia Last Updated Analyzer",
@@ -98,30 +162,20 @@ def main():
     repos = list(pedia.list())
     total = len(repos)
 
-    # repository directory
-    repo_dir = os.path.dirname(args.settings_file)
-
     # keep track of last updated commit
     meta = {}
 
-    # We will save results as we go
+    # We will save results as we go, and use cached results for the day if exist
     times_json = os.path.join(outdir, "last-commit-times.json")
+
     if os.path.exists(times_json):
         meta = read_json(times_json)
 
-    # Parse the commit for when the file was added for each
-    # This is our best estimate for a publication / release date
-    # in the particular place it was parsed (give or take a week)
-    print("🤓️ Looking for when each software repository was added to the database...")
+    added_json = os.path.join(outdir, "rsepedia-times.json")
 
-    added = {}
-    for i, reponame in enumerate(repos):
-        print(f"{i} of {total}", end="\r")
-        repo = pedia.get(reponame[0])
-
-        # Get relative path of the filename to the repository
-        filename = os.path.relpath(repo.filename, repo_dir)
-        added[repo.url] = creation_date(repo, repo_dir, filename)
+    # This should be refactored into a nice class, this function is kind of janky
+    added = derive_creation_timestamps(pedia, outdir, added_json, args.settings_file)
+    write_json(added, added_json)
 
     for i, reponame in enumerate(repos):
         print(f"{i} of {total}", end="\r")
@@ -161,8 +215,22 @@ def main():
     # Write the combined results
     results_json = os.path.join(outdir, "results.json")
     results = {}
+
+    # We have dates for when added to the rsepedia and published
     for url, timestamp in meta.items():
-        results[url] = {"last_commit": timestamp, "added_rsepedia": added[url]}
+        # The more accurate is likely zenodo
+        published = added[url]["created_at"]
+        zenodo_published = added[url]["published"]
+        if zenodo_published:
+            published = zenodo_published
+        results[url] = {
+            "last_commit": timestamp,
+            "added_rsepedia": added[url]["created_at"],
+            "zenodo_published": added[url]["published"],
+            "published": published,
+            "doi": added[url]["doi"],
+        }
+
     write_json(results, results_json)
 
 

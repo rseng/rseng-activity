@@ -52,7 +52,7 @@ def main():
     df.to_csv(os.path.join(results_dir, "results.csv"))
 
     # And plot!
-    plot_results(df, outdir)
+    # plot_results(df, outdir)
 
     # Derive high valued repositories, and also save
     derive_high_valued(df, outdir, results_dir)
@@ -71,7 +71,7 @@ def derive_high_valued(df, outdir, results_dir):
     # Figure out "highly valued" projects, or those with commits at least six months and one year after publication
     months = range(0, 41)
     for month in months:
-        df[f"{month}_months_post_add"] = df.added_database_date + pandas.DateOffset(
+        df[f"{month}_months_post_add"] = df.published_date + pandas.DateOffset(
             months=month
         )
         df[f"{month}_months_high_value"] = (
@@ -86,9 +86,7 @@ def derive_high_valued(df, outdir, results_dir):
 
     plt.figure(figsize=(10, 8))
     plt.plot(list(months), updated_at_period)
-    plt.title(
-        "Number of updated repositories after addition to software database (likely publication)"
-    )
+    plt.title("Number of updated repositories after likely publication")
     plt.xlabel("Months post addition", fontsize=16)
     plt.ylabel("Number of updated repositories", fontsize=16)
     plt.tight_layout()
@@ -103,18 +101,39 @@ def prepare_data_frame(data):
     Given results data, parse into data frame
     """
     # Assemble times into dataframe.
-    df = pandas.DataFrame(columns=["repo", "last_commit_date", "added_database_date"])
+    df = pandas.DataFrame(
+        columns=[
+            "repo",
+            "last_commit_date",
+            "added_database_date",
+            "added_zenodo_date",
+            "published_date",
+            "doi",
+        ]
+    )
     idx = 0
     for url, meta in data.items():
         last_commit = meta["last_commit"].split(" ")[0].strip()
         added = meta["added_rsepedia"].split(" ")[0].strip()
-        df.loc[idx, :] = [url, last_commit, added]
+        zenodo = None
+        if meta["zenodo_published"] is not None:
+            zenodo = meta["zenodo_published"].split(" ")[0].strip()
+
+        # This is zenodo and added squashed, we only use rsepedia if no zenodo
+        published = meta["published"].split(" ")[0].strip()
+        df.loc[idx, :] = [url, last_commit, added, zenodo, published, meta["doi"]]
         idx += 1
 
     # Round to nearest week for added_database
     df["added_database_date"] = pandas.to_datetime(df.added_database_date)
+    df["published_date"] = pandas.to_datetime(df.published_date)
+
+    # Turn these into pandas dates
     df["last_commit_date"] = (
         pandas.to_datetime(df.last_commit_date).dt.to_period("D").dt.start_time
+    )
+    df["added_zenodo_date"] = (
+        pandas.to_datetime(df.added_zenodo_date).dt.to_period("D").dt.start_time
     )
     df["added_database_week"] = (
         df["added_database_date"].dt.to_period("W").dt.start_time
@@ -126,15 +145,31 @@ def plot_results(df, outdir):
     """
     Make plots for each result item.
     """
+    # This includes our best effort for the published data (zenodo and rsepedia added)
     plt.figure(figsize=(18, 10))
     ax = sns.scatterplot(data=df, x="added_database_week", y="last_commit_date")
-    outfile = os.path.join(outdir, "last-commit-function-of-added.png")
+    outfile = os.path.join(outdir, "last-commit-function-of-rsepedia-added.png")
     make_plot(
         ax,
         title="Last Commit vs. Database Addition",
         outfile=outfile,
         ylabel="Last commit date (proxy for activity)",
         xlabel="Date added to database (proxy for publication)",
+    )
+
+    # This only included zenodo, for those skeptical of the RSEpedia
+    plt.figure(figsize=(18, 10))
+
+    # There are 864 records here, much smaller
+    subset = df[df.added_zenodo_date.isnull() == False]
+    ax = sns.scatterplot(data=subset, x="added_zenodo_date", y="last_commit_date")
+    outfile = os.path.join(outdir, "last-commit-function-of-added-zenodo.png")
+    make_plot(
+        ax,
+        title="Last Commit vs. Zenodo Publication",
+        outfile=outfile,
+        ylabel="Last commit date (proxy for activity)",
+        xlabel="Date published Zenodo",
     )
 
 
