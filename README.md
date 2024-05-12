@@ -32,14 +32,17 @@ python measure-activity.py --settings-file /tmp/software/rse.ini -o ./data
 
 This will generate timestmaps and results that include the last commit and the date when the software
 was added to the RSEpedia, which (for non-early entries) we can use as a proxy for when it was "done" or
-"published." 
+"published."  Note that when a repository is deleted or not found, you need to press enter to advance through
+the request through authentication. If you hit a file limit it will give a helpful message to run, and you
+can run the command again - it will pick up where you left off. Just be careful if you go after midnight and
+the date changes.
 
 ## Analysis
 
-The script can be run:
+The script can be run. Note that the original run from 2023 I put `--out` into img, and after that updated to put alongside the dated folder.
 
 ```bash
-python plot-activity.py --results ./data/2023-10-21/results.json --out ./img
+python plot-activity.py --results ./data/2024-5-12/results.json --out ./data/2024-5-12/img
 ```
 
 and I want to answer the following questions:
